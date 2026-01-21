@@ -16,13 +16,23 @@ logging.basicConfig(
 )
 def call_with_retry(func, max_retries=3, sleep_time=2, fallback_return=None, **kwargs):
     """
-    通用的重试机制封装。
-    :param func: 要执行的函数
-    :param max_retries: 最大重试次数
-    :param sleep_time: 重试前的等待秒数
-    :param fallback_return: 如果多次重试仍失败时的返回值
-    :param kwargs: 传给func的命名参数
-    :return: func的结果，若失败则返回 fallback_return
+    通用重试机制
+    
+    参数:
+        func: 要执行的函数
+        max_retries: 最大重试次数（默认3次）
+        sleep_time: 重试前的等待秒数（默认2秒）
+        fallback_return: 如果多次重试仍失败时的返回值
+        kwargs: 传给func的命名参数
+    
+    返回:
+        func的执行结果，若失败则返回fallback_return
+    
+    功能:
+        1. 执行函数并捕获异常
+        2. 失败时等待指定时间后重试
+        3. 达到最大重试次数后返回fallback_return
+        4. 记录每次重试的异常信息
     """
     for attempt in range(1, max_retries + 1):
         try:

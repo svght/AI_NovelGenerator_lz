@@ -1,13 +1,19 @@
 # novel_generator/chapter.py
 # -*- coding: utf-8 -*-
 """
-章节草稿生成及获取历史章节文本、当前章节摘要等
+章节生成模块
+功能：
+1. 生成章节草稿内容
+2. 获取历史章节文本和摘要
+3. 构造章节生成提示词
+4. 集成向量检索获取相关上下文
+5. 处理知识库内容过滤
 """
 import os
 import json
 import logging
-import re  # 添加re模块导入
-from llm_adapters import create_llm_adapter
+import re  # 正则表达式处理，用于文本匹配和解析
+from llm_adapters import create_llm_adapter  # LLM适配器创建
 from prompt_definitions import (
     first_chapter_draft_prompt, 
     next_chapter_draft_prompt, 
@@ -15,12 +21,16 @@ from prompt_definitions import (
     knowledge_filter_prompt,
     knowledge_search_prompt
 )
-from chapter_directory_parser import get_chapter_info_from_blueprint
-from novel_generator.common import invoke_with_cleaning
-from utils import read_file, clear_file_content, save_string_to_txt
+from chapter_directory_parser import get_chapter_info_from_blueprint  # 从目录提取章节信息
+from novel_generator.common import invoke_with_cleaning  # LLM调用通用函数
+from utils import (
+    read_file,  # 读取文件内容
+    clear_file_content,  # 清空文件内容
+    save_string_to_txt  # 保存字符串到文本文件
+)
 from novel_generator.vectorstore_utils import (
-    get_relevant_context_from_vector_store,
-    load_vector_store  # 添加导入
+    get_relevant_context_from_vector_store,  # 向量检索相关上下文
+    load_vector_store  # 加载向量库
 )
 logging.basicConfig(
     filename='app.log',      # 日志文件名
@@ -32,16 +42,36 @@ logging.basicConfig(
 
 def get_last_n_chapters_text(chapters_dir: str, current_chapter_num: int, n: int = 3) -> list:
     """
-    从目录 chapters_dir 中获取最近 n 章的文本内容，返回文本列表。
+    获取最近N章的文本内容
+    
+    参数:
+        chapters_dir: 章节文件所在目录
+        current_chapter_num: 当前章节号
+        n: 要获取的最近章节数量（默认3章）
+    
+    返回:
+        list: 包含最近N章文本内容的列表
+    
+    功能:
+        从chapters_dir目录中读取当前章节之前的n章内容
+        用于生成新章节时提供上下文参考
+        如果某章节文件不存在，则用空字符串代替
     """
+    # 初始化文本列表
     texts = []
+    # 计算起始章节号（确保不小于1）
     start_chap = max(1, current_chapter_num - n)
+    # 遍历读取最近n章的内容
     for c in range(start_chap, current_chapter_num):
+        # 构造章节文件路径
         chap_file = os.path.join(chapters_dir, f"chapter_{c}.txt")
+        # 检查文件是否存在
         if os.path.exists(chap_file):
+            # 读取章节文本并去除首尾空白
             text = read_file(chap_file).strip()
             texts.append(text)
         else:
+            # 文件不存在时添加空字符串
             texts.append("")
     return texts
 
@@ -53,17 +83,40 @@ def summarize_recent_chapters(
     temperature: float,
     max_tokens: int,
     chapters_text_list: list,
-    novel_number: int,            # 新增参数
-    chapter_info: dict,           # 新增参数
-    next_chapter_info: dict,      # 新增参数
+    novel_number: int,            # 当前章节号
+    chapter_info: dict,           # 当前章节信息
+    next_chapter_info: dict,      # 下一章节信息
     timeout: int = 600
-) -> str:  # 修改返回值类型为 str，不再是 tuple
+) -> str:
     """
-    根据前三章内容生成当前章节的精准摘要。
-    如果解析失败，则返回空字符串。
+    生成章节摘要
+    
+    参数:
+        interface_format: LLM接口格式
+        api_key: LLM服务的API密钥
+        base_url: LLM服务的基础URL
+        model_name: 使用的LLM模型名称
+        temperature: 生成温度参数
+        max_tokens: 最大生成token数
+        chapters_text_list: 最近章节的文本列表
+        novel_number: 当前章节号
+        chapter_info: 当前章节的详细信息（标题、角色、目的等）
+        next_chapter_info: 下一章节的详细信息
+        timeout: 请求超时时间（秒）
+    
+    返回:
+        str: 生成的摘要文本，失败时返回空字符串
+    
+    功能:
+        1. 合并最近章节的文本内容
+        2. 限制文本长度以避免超出token限制
+        3. 结合当前章节和下一章节的信息
+        4. 调用LLM生成精准摘要
+        5. 从响应中提取摘要部分
+        6. 限制摘要长度为2000字符
     """
     try:
-        combined_text = "\n".join(chapters_text_list).strip()
+        combined_text = "\n".join(chapters_text_list).strip()  # 合并所有章节文本
         if not combined_text:
             return ""
             
@@ -120,7 +173,21 @@ def summarize_recent_chapters(
         return ""
 
 def extract_summary_from_response(response_text: str) -> str:
-    """从响应文本中提取摘要部分"""
+    """
+    从LLM响应文本中提取摘要部分
+    
+    参数:
+        response_text: LLM返回的完整响应文本
+    
+    返回:
+        str: 提取的摘要内容，未找到则返回空字符串
+    
+    功能:
+        1. 检查响应文本是否为空
+        2. 使用多种标记模式查找摘要位置
+        3. 提取标记后的内容作为摘要
+        4. 清理多余的空白字符
+    """
     if not response_text:
         return ""
         
@@ -141,7 +208,21 @@ def extract_summary_from_response(response_text: str) -> str:
     return response_text.strip()
 
 def format_chapter_info(chapter_info: dict) -> str:
-    """将章节信息字典格式化为文本"""
+    """
+    将章节信息字典格式化为可读文本
+    
+    参数:
+        chapter_info: 包含章节信息的字典
+    
+    返回:
+        str: 格式化后的章节信息文本
+    
+    功能:
+        将章节的各种信息（编号、标题、定位、作用等）
+        按照固定模板格式化为易读的文本
+        用于生成提示词时的上下文展示
+    """
+    # 定义章节信息格式化模板
     template = """
 章节编号：第{number}章
 章节标题：《{title}》
@@ -155,17 +236,18 @@ def format_chapter_info(chapter_info: dict) -> str:
 转折程度：{twist}
 章节简述：{summary}
 """
+    # 使用章节信息填充模板，缺失字段使用默认值
     return template.format(
-        number=chapter_info.get('chapter_number', '未知'),
-        title=chapter_info.get('chapter_title', '未知'),
-        role=chapter_info.get('chapter_role', '未知'),
-        purpose=chapter_info.get('chapter_purpose', '未知'),
-        characters=chapter_info.get('characters_involved', '未指定'),
-        items=chapter_info.get('key_items', '未指定'),
-        location=chapter_info.get('scene_location', '未指定'),
-        foreshadow=chapter_info.get('foreshadowing', '无'),
-        suspense=chapter_info.get('suspense_level', '一般'),
-        twist=chapter_info.get('plot_twist_level', '★☆☆☆☆'),
+        number=chapter_info.get('chapter_number', '未知'),  # 章节编号
+        title=chapter_info.get('chapter_title', '未知'),  # 章节标题
+        role=chapter_info.get('chapter_role', '未知'),  # 章节定位
+        purpose=chapter_info.get('chapter_purpose', '未知'),  # 核心作用
+        characters=chapter_info.get('characters_involved', '未指定'),  # 主要人物
+        items=chapter_info.get('key_items', '未指定'),  # 关键道具
+        location=chapter_info.get('scene_location', '未指定'),  # 场景地点
+        foreshadow=chapter_info.get('foreshadowing', '无'),  # 伏笔设计
+        suspense=chapter_info.get('suspense_level', '一般'),  # 悬念密度
+        twist=chapter_info.get('plot_twist_level', '★☆☆☆☆'),  # 转折程度
         summary=chapter_info.get('chapter_summary', '未提供')
     )
 
