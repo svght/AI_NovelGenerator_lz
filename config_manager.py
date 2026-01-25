@@ -29,7 +29,7 @@ def create_config(config_file: str) -> dict:
     "last_embedding_interface_format": "OpenAI",
     "llm_configs": {
         "DeepSeek V3": {
-            "api_key": "",
+            "api_key": "sk-88feb364a11945088f426256dbaa1115",
             "base_url": "https://api.deepseek.com/v1",
             "model_name": "deepseek-chat",
             "temperature": 0.7,
@@ -58,9 +58,9 @@ def create_config(config_file: str) -> dict:
     },
     "embedding_configs": {
         "OpenAI": {
-            "api_key": "",
-            "base_url": "https://api.openai.com/v1",
-            "model_name": "text-embedding-ada-002",
+            "api_key": "sk-88feb364a11945088f426256dbaa1115",
+            "base_url": "https://api.deepseek.com/v1/embeddings",
+            "model_name": "deepseek-embedding",
             "retrieval_k": 4,
             "interface_format": "OpenAI"
         }
