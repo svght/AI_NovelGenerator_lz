@@ -227,4 +227,4 @@ pyinstaller main.spec
 
 ---
 
-如有更多问题或需求，欢迎在**项目 Issues** 中提出。
+如有更多问题或需求，欢迎在**项目 Issues** 中提出。谢谢。
